@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kundali-backend"
+version = "0.1.0"
+description = "FastAPI backend for kundali generation"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi>=0.116.0",
+  "geocoder>=1.38.1",
+  "geopy>=2.4.1",
+  "httpx>=0.28.1",
+  "SQLAlchemy>=2.0.36",
+  "pydantic>=2.11.0",
+  "pydantic-settings>=2.10.1",
+  "psycopg[binary]>=3.2.1",
+  "PyJHora>=4.7.0",
+  # PyJHora imports pytz at module load but does not declare it, so a clean
+  # environment fails on `from app.main import app` without this line.
+  "pytz>=2024.1",
+  "python-dateutil>=2.9.0.post0",
+  "timezonefinder>=8.1.0",
+  "uvicorn>=0.35.0",
+  "pysweph>=2.10.3.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4.0",
+  "pytest-asyncio>=1.1.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]

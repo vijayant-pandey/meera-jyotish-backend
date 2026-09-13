@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------
+# Secrets - NEVER commit these. .env holds the PostgreSQL password
+# and (later) the Google API keys.
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------
+# Virtual environment
+# ---------------------------------------------------------------
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------
+# Python bytecode and caches
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ---------------------------------------------------------------
+# Tooling caches
+# ---------------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------------------------------------------------------------
+# Packaging output (created by `pip install -e .`)
+# ---------------------------------------------------------------
+*.egg-info/
+kundali_backend.egg-info/
+build/
+dist/
+
+# ---------------------------------------------------------------
+# Local database - this is your data, not source code.
+# ---------------------------------------------------------------
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ---------------------------------------------------------------
+# Server logs written into this folder
+# ---------------------------------------------------------------
+*.log
+uvicorn.out.log
+uvicorn.err.log
+
+# ---------------------------------------------------------------
+# Swiss Ephemeris data files.
+# These are large binaries you download from astro.com, not source.
+# The folder itself is kept via ephe/.gitkeep.
+# Delete the two lines below if you decide to commit them.
+# ---------------------------------------------------------------
+ephe/*.se1
+ephe/*.se2
+
+# ---------------------------------------------------------------
+# OS / editor noise
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
