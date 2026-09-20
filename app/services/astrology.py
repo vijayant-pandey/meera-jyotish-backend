@@ -173,6 +173,9 @@ NATURAL_FRIENDS = {
     "Venus": {"Mercury", "Saturn"},
     "Saturn": {"Mercury", "Venus"},
 }
+# The nodes are given the commonly used set so the relationship column is filled.
+NATURAL_FRIENDS_NODES = {"Venus", "Saturn", "Mercury"}
+NATURAL_ENEMIES_NODES = {"Sun", "Moon", "Mars"}
 NATURAL_ENEMIES = {
     "Sun": {"Venus", "Saturn"},
     "Moon": set(),
@@ -182,6 +185,34 @@ NATURAL_ENEMIES = {
     "Venus": {"Sun", "Moon"},
     "Saturn": {"Sun", "Moon", "Mars"},
 }
+# Traditional Sanskrit names, used by the planetary table.
+SANSKRIT_NAMES = {
+    "Sun": "Surya", "Moon": "Chandra", "Mars": "Mangal", "Mercury": "Budha",
+    "Jupiter": "Guru", "Venus": "Shukra", "Saturn": "Shani", "Rahu": "Rahu", "Ketu": "Ketu",
+}
+
+# Mooltrikona: (sign number, start degree, end degree). A graha in this arc of its
+# own sign is stronger than merely owning it, and classical tables report it in
+# preference to exaltation when both could apply.
+MOOLTRIKONA = {
+    "Sun": (5, 0.0, 20.0),
+    "Moon": (2, 4.0, 30.0),
+    "Mars": (1, 0.0, 12.0),
+    "Mercury": (6, 16.0, 20.0),
+    "Jupiter": (9, 0.0, 10.0),
+    "Venus": (7, 0.0, 15.0),
+    "Saturn": (11, 0.0, 20.0),
+}
+
+# The nodes own no sign in the classical scheme, but the widely used modern
+# attribution gives Rahu co-rulership of Kumbha and Ketu of Vrishchika. Included
+# so the "ruler of" column is not blank for them.
+RULED_SIGNS = {
+    "Sun": {5}, "Moon": {4}, "Mars": {1, 8}, "Mercury": {3, 6},
+    "Jupiter": {9, 12}, "Venus": {2, 7}, "Saturn": {10, 11},
+    "Rahu": {11}, "Ketu": {8},
+}
+
 # Astadhyayi combustion orbs, in degrees of separation from the Sun.
 COMBUSTION_ORBS = {
     "Moon": 12.0, "Mars": 17.0, "Mercury": 14.0,
@@ -304,22 +335,63 @@ def house_number_for_sign(sign_number: int, asc_sign_number: int) -> int:
     return ((sign_number - asc_sign_number) % 12) + 1
 
 
-def planet_relation(name: str, sign_number: int) -> str | None:
-    exaltation_sign = EXALTATION_SIGNS.get(name)
-    if exaltation_sign is None:
-        return None
-    if sign_number == exaltation_sign:
-        return "Exalted"
-    if sign_number == ((exaltation_sign - 1 + 6) % 12) + 1:
-        return "Debilitated"
-    if sign_number in OWN_SIGNS[name]:
-        return "Own"
+def planet_relation(name: str, sign_number: int) -> str:
+    """How the graha regards the lord of the sign it occupies.
+
+    Dignity (exalted, debilitated, mooltrikona) is deliberately NOT folded in
+    here: classical tables report the two separately, so a graha can sit in a
+    neutral house and still be exalted.
+    """
     lord = SIGN_LORDS[sign_number - 1]
+    if lord == name:
+        return "Own House"
+    if name in ("Rahu", "Ketu"):
+        if lord in NATURAL_FRIENDS_NODES:
+            return "Friend's House"
+        if lord in NATURAL_ENEMIES_NODES:
+            return "Enemy's House"
+        return "Neutral"
     if lord in NATURAL_FRIENDS[name]:
-        return "Friendly"
+        return "Friend's House"
     if lord in NATURAL_ENEMIES[name]:
-        return "Enemy"
+        return "Enemy's House"
     return "Neutral"
+
+
+def planet_dignity(name: str, sign_number: int, degree: float) -> str:
+    """Mooltrikona is checked before exaltation: when a graha falls in that arc
+    of its own sign the tables report Mooltrikona, not Exalted."""
+    mool = MOOLTRIKONA.get(name)
+    if mool and sign_number == mool[0] and mool[1] <= degree < mool[2]:
+        return "Mooltrikona"
+    exaltation_sign = EXALTATION_SIGNS.get(name)
+    if exaltation_sign is not None:
+        if sign_number == exaltation_sign:
+            return "Exalted"
+        if sign_number == ((exaltation_sign - 1 + 6) % 12) + 1:
+            return "Debilitated"
+    if sign_number in RULED_SIGNS.get(name, set()) and name not in ("Rahu", "Ketu"):
+        return "Own Sign"
+    return ""
+
+
+def sub_lord(longitude: float) -> str:
+    """KP sub lord: each nakshatra is divided into nine subs in Vimshottari order,
+    starting from the nakshatra lord, each proportional to its dasha years."""
+    index, fraction = nakshatra_index_and_fraction(longitude)
+    sequence = _rotated_dasha_sequence(DASHA_SEQUENCE[index % len(DASHA_SEQUENCE)])
+    cumulative = 0.0
+    for name in sequence:
+        cumulative += DASHA_YEARS[name] / 120
+        if fraction < cumulative:
+            return name
+    return sequence[-1]
+
+
+def houses_ruled(name: str, asc_sign_number: int) -> list[int]:
+    return sorted(
+        house_number_for_sign(sign, asc_sign_number) for sign in RULED_SIGNS.get(name, set())
+    )
 
 
 def is_combust(name: str, longitude: float, sun_longitude: float, retrograde: bool) -> bool:
@@ -775,7 +847,12 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
                 retrograde=retrograde,
                 nakshatra=nakshatra_info(planet.longitude),
                 combust=is_combust(planet.name, planet.longitude, sun_longitude, retrograde),
+                sanskrit_name=SANSKRIT_NAMES.get(planet.name, planet.name),
                 relation=planet_relation(planet.name, sign_number),
+                dignity=planet_dignity(planet.name, sign_number, degree_in_sign(planet.longitude)),
+                sub_lord=sub_lord(planet.longitude),
+                sign_lord=SIGN_LORDS[sign_number - 1],
+                houses_ruled=houses_ruled(planet.name, asc_sign_number),
             )
         )
 
@@ -803,6 +880,9 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
             sign_name=SIGN_NAMES[asc_sign_number - 1],
             degree_in_sign=degree_in_sign(asc_longitude),
             nakshatra=nakshatra_info(asc_longitude),
+            sub_lord=sub_lord(asc_longitude),
+            sign_lord=SIGN_LORDS[asc_sign_number - 1],
+            houses_ruled=[1],
         ),
         chart=base_chart,
         divisional_charts=build_divisional_charts(

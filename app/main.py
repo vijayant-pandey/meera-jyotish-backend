@@ -8,12 +8,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.bootstrap import ensure_schema
 from app.config import get_settings
 from app.database import engine
 from app.models import Base
+from app.routers.admin import MEDIA_ROOT
+from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
+from app.routers.content import router as content_router
+from app.routers.panchang import router as panchang_router
 from app.routers.health import router as health_router
 from app.routers.places import build_router as build_places_router
 from app.routers.reports import router as reports_router
@@ -83,3 +88,11 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(build_places_router(geolocation_service))
 app.include_router(reports_router)
+app.include_router(content_router)
+app.include_router(panchang_router)
+app.include_router(admin_router)
+
+# Uploaded images are served straight from disk. The directory is created on
+# startup so a fresh checkout does not fail the mount.
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
