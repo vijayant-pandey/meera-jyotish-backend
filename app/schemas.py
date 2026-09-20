@@ -106,6 +106,18 @@ class PlanetPosition(CamelModel):
     house_number: int
     retrograde: bool
     nakshatra: NakshatraInfo
+    # Defaulted so reports stored before these columns existed still validate.
+    combust: bool = False
+    # None for Rahu and Ketu, which own no sign and so have no dignity.
+    relation: str | None = None
+
+
+class AscendantPosition(CamelModel):
+    longitude: float
+    sign_number: int
+    sign_name: str
+    degree_in_sign: float
+    nakshatra: NakshatraInfo
 
 
 class Panchang(CamelModel):
@@ -203,6 +215,8 @@ class BirthContext(CamelModel):
 
 class KundaliResponse(CamelModel):
     birth_context: BirthContext
+    # Optional so legacy stored reports validate; report_store refreshes it on read.
+    ascendant: AscendantPosition | None = None
     chart: Chart
     divisional_charts: list[DivisionalChartEntry]
     planets: list[PlanetPosition]

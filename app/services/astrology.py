@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +12,7 @@ import swisseph as swe
 from app.config import get_settings
 from app.schemas import (
     ActiveDasha,
+    AscendantPosition,
     Ayanamsha,
     BirthContext,
     Chart,
@@ -149,6 +151,44 @@ DASHA_YEARS = {
     "Mercury": 17,
 }
 
+# Sign rulers, indexed by sign number - 1.
+SIGN_LORDS = [
+    "Mars", "Venus", "Mercury", "Moon", "Sun", "Mercury",
+    "Venus", "Mars", "Jupiter", "Saturn", "Saturn", "Jupiter",
+]
+EXALTATION_SIGNS = {
+    "Sun": 1, "Moon": 2, "Mars": 10, "Mercury": 6, "Jupiter": 4, "Venus": 12, "Saturn": 7,
+}
+OWN_SIGNS = {
+    "Sun": {5}, "Moon": {4}, "Mars": {1, 8}, "Mercury": {3, 6},
+    "Jupiter": {9, 12}, "Venus": {2, 7}, "Saturn": {10, 11},
+}
+# Natural (naisargika) friendships. Anything listed in neither set is neutral.
+NATURAL_FRIENDS = {
+    "Sun": {"Moon", "Mars", "Jupiter"},
+    "Moon": {"Sun", "Mercury"},
+    "Mars": {"Sun", "Moon", "Jupiter"},
+    "Mercury": {"Sun", "Venus"},
+    "Jupiter": {"Sun", "Moon", "Mars"},
+    "Venus": {"Mercury", "Saturn"},
+    "Saturn": {"Mercury", "Venus"},
+}
+NATURAL_ENEMIES = {
+    "Sun": {"Venus", "Saturn"},
+    "Moon": set(),
+    "Mars": {"Mercury"},
+    "Mercury": {"Moon"},
+    "Jupiter": {"Mercury", "Venus"},
+    "Venus": {"Sun", "Moon"},
+    "Saturn": {"Sun", "Moon", "Mars"},
+}
+# Astadhyayi combustion orbs, in degrees of separation from the Sun.
+COMBUSTION_ORBS = {
+    "Moon": 12.0, "Mars": 17.0, "Mercury": 14.0,
+    "Jupiter": 11.0, "Venus": 10.0, "Saturn": 15.0,
+}
+COMBUSTION_ORBS_RETROGRADE = {"Mercury": 12.0, "Venus": 8.0}
+
 AYANAMSHA_MAP = {
     Ayanamsha.lahiri: swe.SIDM_LAHIRI,
     Ayanamsha.raman: swe.SIDM_RAMAN,
@@ -172,8 +212,10 @@ PLANET_DEFINITIONS = [
     ("Rahu", "Ra", swe.MEAN_NODE),
 ]
 
+LOGGER = logging.getLogger(__name__)
 SETTINGS = get_settings()
 DEFAULT_EPHE_PATH = Path(__file__).resolve().parents[2] / "ephe"
+_EPHEMERIS_FALLBACK_REPORTED = False
 DASHA_LEVELS = [
     DashaLevel.mahadasha,
     DashaLevel.antardasha,
@@ -182,6 +224,23 @@ DASHA_LEVELS = [
     DashaLevel.prana,
     DashaLevel.deha,
 ]
+
+
+def _report_ephemeris_fallback(return_flag: int, error_text: str) -> None:
+    # swisseph answers a FLG_SWIEPH request with the Moshier ephemeris when the .se1
+    # files are missing, and reports that only through the return flag and serr. Both
+    # were being discarded, so a large accuracy loss was invisible. Warn once.
+    global _EPHEMERIS_FALLBACK_REPORTED
+    if _EPHEMERIS_FALLBACK_REPORTED or not return_flag & swe.FLG_MOSEPH:
+        return
+    _EPHEMERIS_FALLBACK_REPORTED = True
+    LOGGER.warning(
+        "Swiss Ephemeris files not found in %s, so positions fall back to the "
+        "lower-accuracy Moshier ephemeris. Place .se1 files there or set "
+        "SWISS_EPHE_PATH. swisseph reported: %s",
+        SETTINGS.swiss_ephe_path or DEFAULT_EPHE_PATH,
+        (error_text or "no detail").strip(),
+    )
 
 
 @dataclass
@@ -235,17 +294,59 @@ def sign_number_from_longitude(longitude: float) -> int:
 
 
 def degree_in_sign(longitude: float) -> float:
-    return round(normalize_degrees(longitude) % 30, 4)
+    # 6 decimals is ~0.004 arcsec, so the UI can render exact degree-minute-second
+    # values. At 4 decimals the rounding was ~0.36 arcsec and could shift a
+    # displayed second, and it also fed the divisional-chart input.
+    return round(normalize_degrees(longitude) % 30, 6)
 
 
 def house_number_for_sign(sign_number: int, asc_sign_number: int) -> int:
     return ((sign_number - asc_sign_number) % 12) + 1
 
 
+def planet_relation(name: str, sign_number: int) -> str | None:
+    exaltation_sign = EXALTATION_SIGNS.get(name)
+    if exaltation_sign is None:
+        return None
+    if sign_number == exaltation_sign:
+        return "Exalted"
+    if sign_number == ((exaltation_sign - 1 + 6) % 12) + 1:
+        return "Debilitated"
+    if sign_number in OWN_SIGNS[name]:
+        return "Own"
+    lord = SIGN_LORDS[sign_number - 1]
+    if lord in NATURAL_FRIENDS[name]:
+        return "Friendly"
+    if lord in NATURAL_ENEMIES[name]:
+        return "Enemy"
+    return "Neutral"
+
+
+def is_combust(name: str, longitude: float, sun_longitude: float, retrograde: bool) -> bool:
+    orb = COMBUSTION_ORBS.get(name)
+    if orb is None:
+        return False
+    if retrograde:
+        orb = COMBUSTION_ORBS_RETROGRADE.get(name, orb)
+    separation = normalize_degrees(longitude - sun_longitude)
+    if separation > 180:
+        separation = 360 - separation
+    return separation <= orb
+
+
+def nakshatra_index_and_fraction(longitude: float) -> tuple[int, float]:
+    # Scale into nakshatra units before splitting. 360/27 has no exact float
+    # representation and lands slightly high, so dividing by it pushes the exact
+    # boundary degrees (40, 80, 120 ...) into the previous nakshatra. Multiplying
+    # first keeps those boundaries exact.
+    position = normalize_degrees(longitude) * 27 / 360
+    index = min(int(position), 26)
+    return index, position - index
+
+
 def nakshatra_info(longitude: float) -> NakshatraInfo:
-    normalized = normalize_degrees(longitude)
-    index = int(normalized // NAKSHATRA_SPAN)
-    pada = int((normalized % NAKSHATRA_SPAN) // PADA_SPAN) + 1
+    index, fraction = nakshatra_index_and_fraction(longitude)
+    pada = min(int(fraction * 4), 3) + 1
     lord = DASHA_SEQUENCE[index % len(DASHA_SEQUENCE)]
     return NakshatraInfo(
         number=index + 1,
@@ -268,7 +369,7 @@ def panchang_from_longitudes(sun_longitude: float, moon_longitude: float, local_
     else:
         tithi = f"{paksha} {tithi_name}"
 
-    yoga_index = int(normalize_degrees(sun_longitude + moon_longitude) // NAKSHATRA_SPAN)
+    yoga_index = min(int(normalize_degrees(sun_longitude + moon_longitude) * 27 / 360), 26)
     karana_index = int(lunar_phase // 6)
     if karana_index == 0:
         karana = "Kimstughna"
@@ -340,7 +441,9 @@ def _find_active_period(periods: list[DashaPeriod], moment: datetime) -> DashaPe
     for period in periods:
         if period.start <= moment < period.end:
             return period
-    return periods[-1]
+    # Clamp to the correct end. A moment before the timeline begins belongs to the
+    # first period; only a moment past the end belongs to the last one.
+    return periods[0] if moment < periods[0].start else periods[-1]
 
 
 def _active_dasha_path(root_periods: list[DashaPeriod], moment: datetime) -> list[DashaPeriod]:
@@ -361,7 +464,7 @@ def _active_dasha_path(root_periods: list[DashaPeriod], moment: datetime) -> lis
 def vimshottari_dasha(moon_longitude: float, local_dt: datetime) -> Dasha:
     moon_nakshatra = nakshatra_info(moon_longitude)
     lord = moon_nakshatra.lord
-    fraction_elapsed = (normalize_degrees(moon_longitude) % NAKSHATRA_SPAN) / NAKSHATRA_SPAN
+    _, fraction_elapsed = nakshatra_index_and_fraction(moon_longitude)
     remaining_fraction = 1 - fraction_elapsed
     mahadasha_years = DASHA_YEARS[lord]
     mahadasha_elapsed_days = mahadasha_years * fraction_elapsed * YEAR_DAYS
@@ -635,7 +738,8 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
 
     computed_planets: list[ComputedPlanet] = []
     for name, abbreviation, planet_id in PLANET_DEFINITIONS:
-        values, _, _ = swe.calc_ut(julian_day_ut, planet_id, flags)
+        values, return_flag, error_text = swe.calc_ut(julian_day_ut, planet_id, flags)
+        _report_ephemeris_fallback(return_flag, error_text)
         computed_planets.append(
             ComputedPlanet(
                 name=name,
@@ -651,10 +755,14 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
         ComputedPlanet(name="Ketu", abbreviation="Ke", longitude=ketu_longitude, speed=rahu.speed)
     )
 
+    sun_longitude = next(
+        planet.longitude for planet in computed_planets if planet.name == "Sun"
+    )
     planet_models: list[PlanetPosition] = []
     for planet in computed_planets:
         sign_number = sign_number_from_longitude(planet.longitude)
         house_number = house_number_for_sign(sign_number, asc_sign_number)
+        retrograde = planet.speed < 0
         planet_models.append(
             PlanetPosition(
                 name=planet.name,
@@ -664,13 +772,18 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
                 sign_name=SIGN_NAMES[sign_number - 1],
                 degree_in_sign=degree_in_sign(planet.longitude),
                 house_number=house_number,
-                retrograde=planet.speed < 0,
+                retrograde=retrograde,
                 nakshatra=nakshatra_info(planet.longitude),
+                combust=is_combust(planet.name, planet.longitude, sun_longitude, retrograde),
+                relation=planet_relation(planet.name, sign_number),
             )
         )
 
-    sun = next(planet for planet in planet_models if planet.name == "Sun")
-    moon = next(planet for planet in planet_models if planet.name == "Moon")
+    # Use the unrounded longitudes here. PlanetPosition rounds to 4 decimals for
+    # display, and the dasha timeline magnifies Moon error by roughly 274 days per
+    # degree, so that rounding alone moves every period boundary by minutes.
+    sun = next(planet for planet in computed_planets if planet.name == "Sun")
+    moon = next(planet for planet in computed_planets if planet.name == "Moon")
 
     base_chart = build_chart(asc_sign_number, planet_models)
 
@@ -683,6 +796,13 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
             longitude=payload.place.lng,
             ayanamsha=payload.ayanamsha,
             julian_day_ut=round(julian_day_ut, 6),
+        ),
+        ascendant=AscendantPosition(
+            longitude=round(asc_longitude, 4),
+            sign_number=asc_sign_number,
+            sign_name=SIGN_NAMES[asc_sign_number - 1],
+            degree_in_sign=degree_in_sign(asc_longitude),
+            nakshatra=nakshatra_info(asc_longitude),
         ),
         chart=base_chart,
         divisional_charts=build_divisional_charts(
