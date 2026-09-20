@@ -59,11 +59,18 @@ def to_schema(report_model: KundaliReportModel) -> KundaliReport:
         calculated = calculate_kundali(request)
         result.divisional_charts = calculated.divisional_charts
 
-    # Rebuild only the Dasha timeline from the backend's current calculation.
-    # Legacy JSON has no calculation-version field, so a schema default cannot
-    # reliably identify dates produced with an older year convention.
+    # Rebuild the Dasha timeline and positions from the backend's current
+    # calculation. Legacy JSON has no calculation-version field, so a schema default
+    # cannot reliably identify results produced with an older convention.
     calculated = calculated or calculate_kundali(request)
     result.dasha = calculated.dasha
+    # Refresh the positions from the same calculation that produced the dasha above.
+    # Serving stored planets next to a freshly computed dasha showed a Moon that
+    # disagreed with its own dasha whenever the ephemeris or precision changed.
+    result.ascendant = calculated.ascendant
+    result.chart = calculated.chart
+    result.planets = calculated.planets
+    result.panchang = calculated.panchang
     return KundaliReport(
         id=report_model.id,
         created_at=created_at,
