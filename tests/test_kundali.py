@@ -1,7 +1,17 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
 
 from app.schemas import Ayanamsha, KundaliRequest, Meridiem, Precision, ResolvedPlace, Source
-from app.services.astrology import calculate_kundali
+from app.services.astrology import (
+    _find_active_period,
+    calculate_kundali,
+    is_combust,
+    planet_relation,
+    nakshatra_index_and_fraction,
+    nakshatra_info,
+    vimshottari_dasha,
+)
 
 
 def build_payload() -> KundaliRequest:
@@ -98,3 +108,99 @@ def test_calculate_kundali_returns_requested_divisional_charts() -> None:
     navamsa = next(entry for entry in result.divisional_charts if entry.key == "D9")
     assert navamsa.chart.style == "north-india"
     assert len(navamsa.chart.houses) == 12
+
+
+def test_moon_longitude_is_pinned_to_the_swiss_ephemeris() -> None:
+    # Guards two regressions at once: silently falling back to the Moshier
+    # ephemeris when the .se1 files go missing, and any loss of precision on the
+    # way into the dasha. The dasha amplifies Moon error by ~274 days per degree.
+    result = calculate_kundali(build_payload())
+    moon = next(planet for planet in result.planets if planet.name == "Moon")
+
+    assert moon.longitude == pytest.approx(344.6346, abs=5e-4)
+    assert moon.nakshatra.name == "Uttara Bhadrapada"
+    assert moon.nakshatra.pada == 4
+    assert moon.nakshatra.lord == "Saturn"
+
+
+def test_dasha_timeline_is_pinned_to_an_exact_instant() -> None:
+    # The structural tests cannot catch a timeline that is shifted wholesale, so
+    # pin a real timestamp. Without this, rounding the Moon before the dasha moved
+    # every boundary by ~15 minutes undetected.
+    result = calculate_kundali(build_payload())
+
+    assert result.dasha.balance_at_birth.remaining_years == pytest.approx(2.895684, abs=1e-5)
+    assert result.dasha.periods[0].start == datetime(
+        1799, 11, 1, 11, 5, 21, 167913, tzinfo=timezone.utc
+    )
+
+
+def test_nakshatra_boundaries_are_exact() -> None:
+    # Only every third boundary is a whole number of degrees (0, 40, 80 ... 320) and
+    # therefore exactly representable as a float. Those are the ones the old
+    # `// (360 / 27)` split pushed into the previous nakshatra. The remaining
+    # boundaries are non-terminating, so no float sits exactly on them.
+    for index in range(0, 27, 3):
+        boundary = index * 40 / 3
+        assert boundary == int(boundary)
+        assert nakshatra_index_and_fraction(boundary)[0] == index
+        assert nakshatra_index_and_fraction(boundary)[1] == pytest.approx(0.0, abs=1e-12)
+
+    # Every nakshatra is still reachable from inside its own span.
+    for index in range(27):
+        midpoint = (index + 0.5) * 360 / 27
+        assert nakshatra_index_and_fraction(midpoint)[0] == index
+
+    assert nakshatra_info(40.0).name == "Rohini"
+    assert nakshatra_info(40.0).lord == "Moon"
+    assert nakshatra_info(40.0).pada == 1
+
+
+def test_dasha_balance_is_full_at_a_nakshatra_boundary() -> None:
+    # A Moon exactly on a boundary has traversed none of the nakshatra, so the
+    # whole mahadasha remains. This previously reported the wrong lord with a
+    # zero balance.
+    dasha = vimshottari_dasha(40.0, datetime(1990, 12, 2, 7, 20, tzinfo=timezone.utc))
+
+    assert dasha.balance_at_birth.lord == "Moon"
+    assert dasha.balance_at_birth.remaining_years == pytest.approx(10.0)
+
+
+def test_find_active_period_clamps_to_the_correct_end() -> None:
+    # A moment before the timeline starts belongs to the first period. This used to
+    # return the last period for anything out of range, in either direction.
+    result = calculate_kundali(build_payload())
+    periods = result.dasha.periods
+
+    assert _find_active_period(periods, periods[0].start - timedelta(days=1)) is periods[0]
+    assert _find_active_period(periods, periods[-1].end + timedelta(days=1)) is periods[-1]
+
+
+def test_planet_dignity_matches_classical_tables() -> None:
+    assert planet_relation("Moon", 2) == "Exalted"
+    assert planet_relation("Moon", 8) == "Debilitated"
+    assert planet_relation("Jupiter", 4) == "Exalted"
+    assert planet_relation("Sun", 5) == "Own"
+    assert planet_relation("Sun", 8) == "Friendly"
+    assert planet_relation("Mars", 2) == "Neutral"
+    assert planet_relation("Saturn", 5) == "Enemy"
+    # Rahu and Ketu rule no sign, so they have no dignity.
+    assert planet_relation("Rahu", 10) is None
+
+
+def test_combustion_uses_the_tighter_retrograde_orb() -> None:
+    # Venus is combust within 10 degrees when direct but only 8 when retrograde.
+    assert is_combust("Venus", 100.0, 109.0, retrograde=False) is True
+    assert is_combust("Venus", 100.0, 109.0, retrograde=True) is False
+    # Separation is measured the short way around the zodiac.
+    assert is_combust("Venus", 2.0, 355.0, retrograde=False) is True
+    assert is_combust("Sun", 100.0, 100.0, retrograde=False) is False
+
+
+def test_ascendant_is_exposed_with_its_nakshatra() -> None:
+    result = calculate_kundali(build_payload())
+
+    assert result.ascendant is not None
+    assert result.ascendant.sign_name == result.chart.ascendant_sign_name
+    assert 0 <= result.ascendant.degree_in_sign < 30
+    assert 1 <= result.ascendant.nakshatra.pada <= 4
