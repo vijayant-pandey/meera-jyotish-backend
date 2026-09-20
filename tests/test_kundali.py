@@ -6,8 +6,11 @@ from app.schemas import Ayanamsha, KundaliRequest, Meridiem, Precision, Resolved
 from app.services.astrology import (
     _find_active_period,
     calculate_kundali,
+    houses_ruled,
     is_combust,
+    planet_dignity,
     planet_relation,
+    sub_lord,
     nakshatra_index_and_fraction,
     nakshatra_info,
     vimshottari_dasha,
@@ -177,15 +180,13 @@ def test_find_active_period_clamps_to_the_correct_end() -> None:
 
 
 def test_planet_dignity_matches_classical_tables() -> None:
-    assert planet_relation("Moon", 2) == "Exalted"
-    assert planet_relation("Moon", 8) == "Debilitated"
-    assert planet_relation("Jupiter", 4) == "Exalted"
-    assert planet_relation("Sun", 5) == "Own"
-    assert planet_relation("Sun", 8) == "Friendly"
+    assert planet_dignity("Moon", 2, 2.0) == "Exalted"
+    assert planet_dignity("Moon", 8, 10.0) == "Debilitated"
+    assert planet_dignity("Jupiter", 4, 19.0) == "Exalted"
+    assert planet_relation("Sun", 5) == "Own House"
+    assert planet_relation("Sun", 8) == "Friend's House"
     assert planet_relation("Mars", 2) == "Neutral"
-    assert planet_relation("Saturn", 5) == "Enemy"
-    # Rahu and Ketu rule no sign, so they have no dignity.
-    assert planet_relation("Rahu", 10) is None
+    assert planet_relation("Saturn", 5) == "Enemy's House"
 
 
 def test_combustion_uses_the_tighter_retrograde_orb() -> None:
@@ -204,3 +205,43 @@ def test_ascendant_is_exposed_with_its_nakshatra() -> None:
     assert result.ascendant.sign_name == result.chart.ascendant_sign_name
     assert 0 <= result.ascendant.degree_in_sign < 30
     assert 1 <= result.ascendant.nakshatra.pada <= 4
+
+
+def test_kp_sub_lord_divides_the_nakshatra_in_vimshottari_proportion() -> None:
+    # Checked against a published KP table: Lagna at 324.3231 (Purva Bhadrapada,
+    # lord Jupiter) falls in the Mercury sub; Sun at 226.1108 (Anuradha, lord
+    # Saturn) falls in the Jupiter sub.
+    assert sub_lord(324.3231) == "Mercury"
+    assert sub_lord(226.1108) == "Jupiter"
+    # The first sub of any nakshatra is its own lord.
+    assert sub_lord(0.01) == "Ketu"
+    assert sub_lord(40.01) == "Moon"
+
+
+def test_dignity_prefers_mooltrikona_over_exaltation() -> None:
+    # The Moon exalts at 3 deg Taurus but its mooltrikona runs 4-30 deg, so a Moon
+    # at 15 deg Taurus is reported as Mooltrikona rather than Exalted.
+    assert planet_dignity("Moon", 2, 15.8) == "Mooltrikona"
+    assert planet_dignity("Moon", 2, 2.0) == "Exalted"
+    # Jupiter's mooltrikona is in Sagittarius, so in Cancer it stays Exalted.
+    assert planet_dignity("Jupiter", 4, 19.85) == "Exalted"
+    assert planet_dignity("Jupiter", 10, 5.0) == "Debilitated"
+    assert planet_dignity("Mars", 8, 5.0) == "Own Sign"
+    assert planet_dignity("Rahu", 10, 5.0) == ""
+
+
+def test_relationship_is_about_the_sign_lord_not_dignity() -> None:
+    assert planet_relation("Sun", 8) == "Friend's House"
+    assert planet_relation("Moon", 2) == "Neutral"
+    assert planet_relation("Sun", 5) == "Own House"
+    # The nodes own no sign classically but still get a relationship.
+    assert planet_relation("Ketu", 4) == "Enemy's House"
+    assert planet_relation("Rahu", 10) == "Friend's House"
+
+
+def test_houses_ruled_counts_from_the_ascendant() -> None:
+    assert houses_ruled("Sun", 11) == [7]
+    assert houses_ruled("Mars", 11) == [3, 10]
+    # Modern co-rulership so the column is not blank for the nodes.
+    assert houses_ruled("Rahu", 11) == [1]
+    assert houses_ruled("Ketu", 11) == [10]

@@ -108,8 +108,18 @@ class PlanetPosition(CamelModel):
     nakshatra: NakshatraInfo
     # Defaulted so reports stored before these columns existed still validate.
     combust: bool = False
-    # None for Rahu and Ketu, which own no sign and so have no dignity.
+    sanskrit_name: str = ""
+    # How the graha regards the lord of the sign it sits in.
     relation: str | None = None
+    # Exalted / Debilitated / Mooltrikona / Own Sign, or blank. Reported apart
+    # from `relation` because classical tables list the two separately.
+    dignity: str = ""
+    # KP sub lord: the Vimshottari sub-division of the nakshatra.
+    sub_lord: str = ""
+    # Lord of the sign the graha occupies.
+    sign_lord: str = ""
+    # Bhavas this graha rules, counted from the ascendant.
+    houses_ruled: list[int] = Field(default_factory=list)
 
 
 class AscendantPosition(CamelModel):
@@ -118,6 +128,9 @@ class AscendantPosition(CamelModel):
     sign_name: str
     degree_in_sign: float
     nakshatra: NakshatraInfo
+    sub_lord: str = ""
+    sign_lord: str = ""
+    houses_ruled: list[int] = Field(default_factory=list)
 
 
 class Panchang(CamelModel):
