@@ -16,10 +16,12 @@ from app.database import engine
 from app.models import Base
 from app.routers.admin import MEDIA_ROOT
 from app.routers.admin import router as admin_router
+from app.routers.almanac import router as almanac_router
 from app.routers.auth import router as auth_router
 from app.routers.content import router as content_router
 from app.routers.panchang import router as panchang_router
 from app.routers.health import router as health_router
+from app.routers.match import router as match_router
 from app.routers.places import build_router as build_places_router
 from app.routers.reports import router as reports_router
 from app.services.geolocation import GeolocationService
@@ -90,6 +92,8 @@ app.include_router(build_places_router(geolocation_service))
 app.include_router(reports_router)
 app.include_router(content_router)
 app.include_router(panchang_router)
+app.include_router(match_router)
+app.include_router(almanac_router)
 app.include_router(admin_router)
 
 # Uploaded images are served straight from disk. The directory is created on
