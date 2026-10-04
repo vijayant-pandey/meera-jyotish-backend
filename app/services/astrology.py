@@ -12,6 +12,8 @@ import swisseph as swe
 from app.config import get_settings
 from app.schemas import (
     ActiveDasha,
+    Gender,
+    GenderContext,
     AscendantPosition,
     Ayanamsha,
     BirthContext,
@@ -314,6 +316,41 @@ DIVISIONAL_CHART_SPECS = [
     DivisionalChartSpec("D45", 45, "D-45 (Akshavedamsa)", "Character, overall life, and paternal lineage"),
     DivisionalChartSpec("D60", 60, "D-60 (Shashtyamsa)", "Past-life karma and deepest destiny"),
 ]
+
+
+# Kalatra karaka. Classical rule: Shukra signifies the wife in a male chart and
+# Guru the husband in a female chart. This is the ONLY place gender enters a
+# calculation here - positions, vargas, dasha and panchang are astronomical and
+# are identical whatever the gender.
+SPOUSE_KARAKA = {
+    Gender.male: ("Venus", "Shukra"),
+    Gender.female: ("Jupiter", "Guru"),
+}
+
+
+def gender_context(gender: Gender) -> GenderContext:
+    karaka = SPOUSE_KARAKA.get(gender)
+    if karaka is None:
+        return GenderContext(
+            gender=gender,
+            note=(
+                "No gender stated, so the kalatra karaka is not asserted. Every "
+                "other value in this report is astronomical and does not depend "
+                "on gender."
+            ),
+        )
+    name, sanskrit = karaka
+    counterpart = "wife" if gender is Gender.male else "husband"
+    return GenderContext(
+        gender=gender,
+        spouse_karaka=name,
+        spouse_karaka_sanskrit=sanskrit,
+        note=(
+            f"{sanskrit} ({name}) is the kalatra karaka for this chart, signifying "
+            f"the {counterpart}. Positions, divisional charts, dasha and panchang "
+            "are astronomical and are identical whatever the gender."
+        ),
+    )
 
 
 def normalize_degrees(value: float) -> float:
@@ -865,6 +902,7 @@ def calculate_kundali(payload: KundaliRequest) -> KundaliResponse:
     base_chart = build_chart(asc_sign_number, planet_models)
 
     return KundaliResponse(
+        gender_context=gender_context(payload.gender),
         birth_context=BirthContext(
             local_datetime=local_dt,
             utc_datetime=utc_dt,
