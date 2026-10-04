@@ -2,7 +2,15 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from app.schemas import Ayanamsha, KundaliRequest, Meridiem, Precision, ResolvedPlace, Source
+from app.schemas import (
+    Ayanamsha,
+    Gender,
+    KundaliRequest,
+    Meridiem,
+    Precision,
+    ResolvedPlace,
+    Source,
+)
 from app.services.astrology import (
     _find_active_period,
     calculate_kundali,
@@ -17,9 +25,10 @@ from app.services.astrology import (
 )
 
 
-def build_payload() -> KundaliRequest:
+def build_payload(gender: Gender = Gender.other) -> KundaliRequest:
     return KundaliRequest(
         name="Ada Lovelace",
+        gender=gender,
         birth_date=date(1815, 12, 10),
         birth_time12h="1:30",
         meridiem=Meridiem.pm,
@@ -245,3 +254,35 @@ def test_houses_ruled_counts_from_the_ascendant() -> None:
     # Modern co-rulership so the column is not blank for the nodes.
     assert houses_ruled("Rahu", 11) == [1]
     assert houses_ruled("Ketu", 11) == [10]
+
+
+def test_gender_selects_the_kalatra_karaka() -> None:
+    # Shukra signifies the wife in a male chart, Guru the husband in a female one.
+    male = calculate_kundali(build_payload(gender=Gender.male))
+    female = calculate_kundali(build_payload(gender=Gender.female))
+    unstated = calculate_kundali(build_payload(gender=Gender.other))
+
+    assert male.gender_context.spouse_karaka == "Venus"
+    assert male.gender_context.spouse_karaka_sanskrit == "Shukra"
+    assert female.gender_context.spouse_karaka == "Jupiter"
+    assert female.gender_context.spouse_karaka_sanskrit == "Guru"
+    # Not asserted when the gender is not stated, rather than guessed.
+    assert unstated.gender_context.spouse_karaka == ""
+
+
+def test_gender_changes_nothing_astronomical() -> None:
+    # The whole point: positions, vargas, dasha and panchang are astronomy and
+    # must be byte-identical whatever the gender. If this ever fails, a gender
+    # dependency has been introduced somewhere it does not belong.
+    male = calculate_kundali(build_payload(gender=Gender.male))
+    female = calculate_kundali(build_payload(gender=Gender.female))
+
+    assert male.planets == female.planets
+    assert male.ascendant == female.ascendant
+    assert male.chart == female.chart
+    assert male.divisional_charts == female.divisional_charts
+    assert male.panchang == female.panchang
+    assert male.dasha == female.dasha
+    assert male.birth_context == female.birth_context
+    # Only this differs.
+    assert male.gender_context != female.gender_context

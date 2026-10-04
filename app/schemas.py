@@ -33,6 +33,12 @@ class Meridiem(str, Enum):
     pm = "PM"
 
 
+class Gender(str, Enum):
+    male = "MALE"
+    female = "FEMALE"
+    other = "OTHER"
+
+
 class Ayanamsha(str, Enum):
     lahiri = "LAHIRI"
     raman = "RAMAN"
@@ -87,6 +93,8 @@ class KundaliRequest(CamelModel):
     meridiem: Meridiem
     place: ResolvedPlace
     ayanamsha: Ayanamsha = Ayanamsha.lahiri
+    # Defaulted so reports stored before this field existed still validate.
+    gender: Gender = Gender.other
 
 
 class NakshatraInfo(CamelModel):
@@ -226,8 +234,25 @@ class BirthContext(CamelModel):
     julian_day_ut: float
 
 
+class GenderContext(CamelModel):
+    """The parts of a reading that classically depend on the native’s gender.
+
+    Nothing astronomical belongs here: positions, vargas, dasha and panchang are
+    identical whatever the gender. Only karaka selection differs.
+    """
+
+    gender: Gender
+    # Kalatra karaka: Shukra signifies the wife in a male chart, Guru the
+    # husband in a female chart. Blank when the gender is not stated.
+    spouse_karaka: str = ""
+    spouse_karaka_sanskrit: str = ""
+    note: str = ""
+
+
 class KundaliResponse(CamelModel):
     birth_context: BirthContext
+    # Optional so reports stored before this field existed still validate.
+    gender_context: GenderContext | None = None
     # Optional so legacy stored reports validate; report_store refreshes it on read.
     ascendant: AscendantPosition | None = None
     chart: Chart
@@ -260,6 +285,118 @@ class DashaRouteResponse(CamelModel):
     name: str
     birth_context: BirthContext
     dasha: Dasha
+
+
+class MatchPartner(CamelModel):
+    """One side of a guna milan, reduced to what the kootas actually use."""
+
+    name: str
+    gender: Gender
+    birth_date: date
+    place_label: str
+    moon_sign_name: str
+    moon_sign_number: int
+    nakshatra_name: str
+    nakshatra_number: int
+    pada: int
+    nakshatra_lord: str
+
+
+class KootaScore(CamelModel):
+    key: str
+    name: str
+    obtained: float
+    maximum: float
+    meaning: str
+
+
+class MatchRequest(CamelModel):
+    boy: KundaliRequest
+    girl: KundaliRequest
+
+
+class MatchResponse(CamelModel):
+    boy: MatchPartner
+    girl: MatchPartner
+    kootas: list[KootaScore]
+    total_obtained: float
+    total_maximum: float
+    percentage: float
+    verdict: str
+
+
+class AlmanacColumn(CamelModel):
+    key: str
+    label: str
+
+
+class AlmanacSection(CamelModel):
+    """Every almanac section shares this shape so one table component renders
+    all of them."""
+
+    section: str
+    title: str
+    subtitle: str = ""
+    location: str = ""
+    columns: list[AlmanacColumn]
+    rows: list[dict[str, str]]
+    note: str = ""
+
+
+class ChoghadiyaSlot(CamelModel):
+    name: str
+    quality: str
+    tone: str
+    start: str
+    end: str
+    start_label: str
+    end_label: str
+    rahu_kala: bool
+
+
+class ChoghadiyaDay(CamelModel):
+    """The dedicated choghadiya page: day and night side by side."""
+
+    location: str
+    timezone: str
+    date: str
+    weekday: str
+    date_label: str
+    sunrise: str
+    sunset: str
+    next_sunrise: str
+    sunrise_label: str
+    sunset_label: str
+    rahu_kala_start: str
+    rahu_kala_end: str
+    day: list[ChoghadiyaSlot]
+    night: list[ChoghadiyaSlot]
+    note: str = ""
+
+
+class RahuWheelSlice(CamelModel):
+    period: int
+    weekday: str = ""
+
+
+class RahuKaal(CamelModel):
+    location: str
+    timezone: str
+    date: str
+    weekday: str
+    date_label: str
+    sunrise: str
+    sunset: str
+    sunrise_label: str
+    sunset_label: str
+    start: str
+    end: str
+    start_label: str
+    end_label: str
+    duration_label: str
+    period: int
+    weekday_wheel: list[RahuWheelSlice]
+    note: str = ""
 
 
 class AuthUser(CamelModel):
