@@ -20,6 +20,8 @@ dependencies = [
   # PyJHora imports pytz at module load but does not declare it, so a clean
   # environment fails on `from app.main import app` without this line.
   "pytz>=2024.1",
+  # FastAPI needs this for multipart form parsing (admin image uploads).
+  "python-multipart>=0.0.9",
   "python-dateutil>=2.9.0.post0",
   "timezonefinder>=8.1.0",
   "uvicorn>=0.35.0",
