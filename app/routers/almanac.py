@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date as date_type
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -76,6 +77,133 @@ def rahu_kaal_detail(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Rahu Kaal failed: {exc}") from exc
+
+
+@router.get("/eclipse-year")
+def eclipse_year(
+    kind: str = Query(..., pattern="^(solar|lunar)$"),
+    lat: float = Query(23.170152, ge=-90, le=90),
+    lng: float = Query(79.932451, ge=-180, le=180),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    label: str = Query("Jabalpur, India", max_length=160),
+    year: int | None = Query(None, ge=1900, le=2200, description="Defaults to the year of the next eclipse."),
+) -> dict:
+    """Every solar or lunar eclipse in a year, with local timings and Sutak."""
+    from app.services.eclipses import default_year, eclipses_for_year
+
+    try:
+        chosen = year or default_year(kind, tz)
+        return eclipses_for_year(kind, lat, lng, tz, chosen, label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Eclipse calculation failed: {exc}") from exc
+
+
+@router.get("/season")
+def season_detail(
+    event: str = Query(..., pattern="^(vernal-equinox|summer-solstice|autumnal-equinox|winter-solstice)$"),
+    lat: float = Query(23.170152, ge=-90, le=90),
+    lng: float = Query(79.932451, ge=-180, le=180),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    label: str = Query("Jabalpur, India", max_length=160),
+    year: int | None = Query(None, ge=1900, le=2200, description="Defaults to the current year."),
+) -> dict:
+    """An equinox or solstice for a year, with the day length around it."""
+    from app.services.seasons import season
+
+    try:
+        return season(event, lat, lng, tz, year or date_type.today().year, label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Season calculation failed: {exc}") from exc
+
+
+def _run(label: str, fn, *args, **kwargs) -> dict:
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"{label} failed: {exc}") from exc
+
+
+@router.get("/lunar-days")
+def lunar_days(
+    kind: str = Query(..., pattern="^(purnima|amavasya)$"),
+    lat: float = Query(23.170152, ge=-90, le=90),
+    lng: float = Query(79.932451, ge=-180, le=180),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    year: int | None = Query(None, ge=1900, le=2200),
+) -> dict:
+    """Every Purnima or Amavasya in a year, with the day it is kept on."""
+    from app.services import planet_events
+
+    return _run("Purnima/Amavasya", planet_events.lunar_days, kind, lat, lng, tz, year or date_type.today().year)
+
+
+@router.get("/planet-transits")
+def planet_transits(
+    planet: str = Query(..., max_length=16),
+    division: str = Query("rashi", pattern="^(rashi|nakshatra|pada)$"),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    year: int | None = Query(None, ge=1900, le=2200),
+) -> dict:
+    """When a graha enters each rashi, nakshatra or pada in a year."""
+    from app.services import planet_events
+
+    return _run("Transit", planet_events.transits, planet, division, tz, year or date_type.today().year)
+
+
+@router.get("/planet-retrogrades")
+def planet_retrogrades(
+    planet: str = Query(..., max_length=16),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    year: int | None = Query(None, ge=1900, le=2200),
+) -> dict:
+    """Vakri and Margi stations of a graha in a year."""
+    from app.services import planet_events
+
+    return _run("Retrograde", planet_events.retrogrades, planet, tz, year or date_type.today().year)
+
+
+@router.get("/planet-combustions")
+def planet_combustions(
+    planet: str = Query(..., max_length=16),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    year: int | None = Query(None, ge=1900, le=2200),
+) -> dict:
+    """Asta and Uday of a graha in a year."""
+    from app.services import planet_events
+
+    return _run("Combustion", planet_events.combustions, planet, tz, year or date_type.today().year)
+
+
+@router.get("/planet-positions")
+def planet_positions(
+    lat: float = Query(23.170152, ge=-90, le=90),
+    lng: float = Query(79.932451, ge=-180, le=180),
+    tz: str = Query("Asia/Kolkata", max_length=64),
+    at: datetime | None = Query(None, description="Local date-time at the place. Defaults to now."),
+    ayanamsha: str = Query("lahiri", pattern="^(lahiri|raman|kp|tropical)$"),
+    true_nodes: bool = Query(False, alias="trueNodes"),
+    outer: bool = Query(True),
+) -> dict:
+    """Every graha's sidereal position at a moment."""
+    from dateutil import tz as tzlib
+
+    from app.services import planet_events
+
+    zone = tzlib.gettz(tz)
+    if zone is None:
+        raise HTTPException(status_code=400, detail="Unsupported timezone.")
+    moment = at.replace(tzinfo=None) if at else datetime.now(zone).replace(tzinfo=None)
+    return _run(
+        "Planetary positions",
+        planet_events.positions,
+        lat, lng, tz, moment, ayanamsha=ayanamsha, true_nodes=true_nodes, outer=outer,
+    )
 
 
 @router.get("/{section}", response_model=AlmanacSection)
