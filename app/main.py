@@ -12,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.bootstrap import ensure_schema
 from app.config import get_settings
-from app.database import engine
+from app.database import SessionLocal, engine
 from app.models import Base
+from app.page_images import sync_defaults
 from app.routers.admin import MEDIA_ROOT
 from app.routers.admin import router as admin_router
 from app.routers.almanac import router as almanac_router
@@ -59,6 +60,10 @@ geolocation_service = GeolocationService(settings)
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_schema(engine)
+    # Give every image slot a row, showing its built-in picture, so the admin
+    # panel can list and replace them.
+    with SessionLocal() as db:
+        sync_defaults(db)
     yield
 
 

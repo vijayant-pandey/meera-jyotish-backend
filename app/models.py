@@ -187,6 +187,21 @@ class Rashifal(ContentMixin, Base):
     image_url: Mapped[str] = mapped_column(String(500), default="")
 
 
+class PageImage(ContentMixin, Base):
+    """An image slot on the site: a page banner, a zodiac tile, a page's art.
+
+    The key is what the page looks the image up by. A blank image_url means the
+    page shows its built-in image, so clearing a slot is how an admin reverts.
+    """
+
+    __tablename__ = "page_images"
+
+    key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(200), default="")
+    image_url: Mapped[str] = mapped_column(String(500), default="")
+    credit: Mapped[str] = mapped_column(String(300), default="")
+
+
 class Subscriber(ContentMixin, Base):
     """Footer newsletter sign-ups. Read-only in the admin panel."""
 
