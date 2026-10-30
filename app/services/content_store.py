@@ -12,6 +12,7 @@ from app.models import (
     Festival,
     HeroSlide,
     NavItem,
+    PageImage,
     PlanetaryEvent,
     Rashifal,
     ServiceCard,
@@ -107,4 +108,5 @@ CONTENT_MODELS: dict[str, type[Any]] = {
     "festivals": Festival,
     "planetary-events": PlanetaryEvent,
     "rashifal": Rashifal,
+    "page-images": PageImage,
 }

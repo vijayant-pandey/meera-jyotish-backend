@@ -15,6 +15,7 @@ from app.content_schemas import (
     SubscribeRequest,
     HeroSlideRead,
     NavItemRead,
+    PageImageRead,
     ServiceCardRead,
     SiteContent,
     SiteTextRead,
@@ -52,6 +53,7 @@ def get_site_content(db: Session = Depends(get_db)) -> SiteContent:
         festivals=rows("festivals", FestivalRead),
         planetary_events=rows("planetary-events", PlanetaryEventRead),
         rashifal=rows("rashifal", RashifalRead),
+        page_images=rows("page-images", PageImageRead),
     )
 
 
