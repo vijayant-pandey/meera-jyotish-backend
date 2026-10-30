@@ -151,6 +151,19 @@ class RashifalRead(RashifalWrite, ContentRead):
     pass
 
 
+# --- page images ---------------------------------------------------------------
+
+class PageImageWrite(ContentBase):
+    key: str = Field(min_length=1, max_length=80)
+    label: str = Field(default="", max_length=200)
+    image_url: str = Field(default="", max_length=500)
+    credit: str = Field(default="", max_length=300)
+
+
+class PageImageRead(PageImageWrite, ContentRead):
+    pass
+
+
 class SubscribeRequest(CamelModel):
     email: str = Field(min_length=5, max_length=255)
 
@@ -188,3 +201,4 @@ class SiteContent(CamelModel):
     festivals: list[FestivalRead]
     planetary_events: list[PlanetaryEventRead]
     rashifal: list[RashifalRead]
+    page_images: list[PageImageRead] = []
