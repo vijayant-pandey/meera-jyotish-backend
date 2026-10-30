@@ -41,6 +41,8 @@ from app.content_schemas import (
     SubscribeRequest,
     ZodiacOverrideRead,
     ZodiacOverrideWrite,
+    PageImageRead,
+    PageImageWrite,
 )
 from app.database import get_db
 from app.models import AdminUser
@@ -62,6 +64,7 @@ CONTENT_REGISTRY: dict[str, tuple[type[Any], type[Any], type[Any]]] = {
     "festivals": (content_store.CONTENT_MODELS["festivals"], FestivalWrite, FestivalRead),
     "planetary-events": (content_store.CONTENT_MODELS["planetary-events"], PlanetaryEventWrite, PlanetaryEventRead),
     "rashifal": (content_store.CONTENT_MODELS["rashifal"], RashifalWrite, RashifalRead),
+    "page-images": (content_store.CONTENT_MODELS["page-images"], PageImageWrite, PageImageRead),
 }
 
 MEDIA_ROOT = Path(__file__).resolve().parents[2] / "media"
