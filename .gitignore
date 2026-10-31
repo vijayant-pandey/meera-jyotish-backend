@@ -48,6 +48,9 @@ data/*.sqlite3
 *.db-wal
 *.db-shm
 
+# Database dumps (pg_dump output etc.) hold user data.
+*.sql
+
 # ---------------------------------------------------------------
 # Admin-uploaded images. User content, not source - back these up
 # separately rather than committing them.
