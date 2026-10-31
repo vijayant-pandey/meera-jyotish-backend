@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     rate_limit_max_requests: int = Field(default=80, alias="RATE_LIMIT_MAX_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     swiss_ephe_path: str | None = Field(default=None, alias="SWISS_EPHE_PATH")
+    # cloudinary://<api_key>:<api_secret>@<cloud_name>. Set it to keep admin
+    # uploads on Cloudinary; leave it unset to store them in backend/media/.
+    cloudinary_url: str | None = Field(default=None, alias="CLOUDINARY_URL")
     database_url: str = Field(
         default=f"sqlite:///{(Path(__file__).resolve().parents[1] / 'data' / 'kundali.db').as_posix()}",
         alias="DATABASE_URL",

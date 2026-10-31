@@ -13,6 +13,7 @@ from app.admin_auth import create_admin_user
 from app.database import get_db
 from app.main import app
 from app.models import Base
+from app.services.media_store import LocalMediaStore, get_media_store
 
 PASSWORD = "correct-horse-battery"
 SHORT_OK = "vkp12311"  # 8 chars: the documented minimum
@@ -39,6 +40,8 @@ def client(tmp_path) -> Iterator[TestClient]:
     setup.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    # Uploads go to a temp folder, never to Cloudinary, even when .env sets it.
+    app.dependency_overrides[get_media_store] = lambda: LocalMediaStore(tmp_path / "media")
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
