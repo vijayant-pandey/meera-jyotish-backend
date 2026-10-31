@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import secrets
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
@@ -47,6 +45,7 @@ from app.content_schemas import (
 from app.database import get_db
 from app.models import AdminUser
 from app.services import content_store
+from app.services.media_store import MEDIA_ROOT, MediaStore, MediaStoreError, get_media_store
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -67,7 +66,6 @@ CONTENT_REGISTRY: dict[str, tuple[type[Any], type[Any], type[Any]]] = {
     "page-images": (content_store.CONTENT_MODELS["page-images"], PageImageWrite, PageImageRead),
 }
 
-MEDIA_ROOT = Path(__file__).resolve().parents[2] / "media"
 ALLOWED_IMAGE_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -198,6 +196,7 @@ def reorder_content(
 async def upload_media(
     file: UploadFile = File(...),
     _: AdminUser = Depends(require_admin),
+    store: MediaStore = Depends(get_media_store),
 ) -> MediaUploadResult:
     extension = ALLOWED_IMAGE_TYPES.get(file.content_type or "")
     if extension is None:
@@ -215,15 +214,15 @@ async def upload_media(
     if not data:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    # The stored name is generated, never taken from the upload, so a crafted
-    # filename cannot traverse out of the media directory or overwrite anything.
-    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-    stored_name = f"{secrets.token_hex(16)}{extension}"
-    (MEDIA_ROOT / stored_name).write_bytes(data)
+    content_type = file.content_type or "application/octet-stream"
+    try:
+        url, stored_name = await store.save(data, extension, content_type)
+    except MediaStoreError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return MediaUploadResult(
-        url=f"/media/{stored_name}",
+        url=url,
         filename=stored_name,
-        content_type=file.content_type or "application/octet-stream",
+        content_type=content_type,
         bytes=len(data),
     )
