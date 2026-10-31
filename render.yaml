@@ -1,0 +1,42 @@
+# Render Blueprint: the FastAPI backend and its PostgreSQL database.
+# On Render choose New > Blueprint and pick this repo; Render reads this file.
+# Settings marked "sync: false" are asked for in the dashboard, never committed.
+
+services:
+  - type: web
+    name: meera-jyotish-backend      # gives https://meera-jyotish-backend.onrender.com, which vercel.json expects
+    runtime: python
+    plan: free
+    region: singapore                # closest Render region to India
+    branch: production
+    buildCommand: pip install .
+    # Vercel forwards every request, so trust its X-Forwarded-For header to see
+    # each visitor's real IP; otherwise the rate limiter counts everyone as one.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: meera-jyotish-db
+          property: connectionString
+      - key: FRONTEND_ORIGIN
+        sync: false                  # your Vercel URL, e.g. https://meera-jyotish.vercel.app
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+      - key: NOMINATIM_USER_AGENT
+        sync: false                  # e.g. meera-jyotish/1.0 (contact: you@example.com)
+      - key: ENABLE_GOOGLE_PROVIDER
+        value: "true"
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false                  # optional; leave blank to use OpenStreetMap
+      - key: GOOGLE_TIMEZONE_API_KEY
+        sync: false                  # optional
+
+databases:
+  - name: meera-jyotish-db
+    plan: free
+    region: singapore
+    databaseName: kundali
+    user: kundali
