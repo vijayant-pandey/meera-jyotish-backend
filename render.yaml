@@ -1,4 +1,4 @@
-# Render Blueprint: the FastAPI backend and its PostgreSQL database.
+# Render Blueprint: the FastAPI backend. The PostgreSQL database lives on Neon.
 # On Render choose New > Blueprint and pick this repo; Render reads this file.
 # Settings marked "sync: false" are asked for in the dashboard, never committed.
 
@@ -18,9 +18,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.13.1
       - key: DATABASE_URL
-        fromDatabase:
-          name: meera-jyotish-db
-          property: connectionString
+        sync: false                  # Neon connection string (the direct one, not "-pooler"), ending ?sslmode=require
       - key: FRONTEND_ORIGIN
         sync: false                  # your Vercel URL, e.g. https://meera-jyotish.vercel.app
       - key: CLOUDINARY_URL
@@ -36,9 +34,3 @@ services:
       - key: GOOGLE_TIMEZONE_API_KEY
         sync: false                  # optional
 
-databases:
-  - name: meera-jyotish-db
-    plan: free
-    region: singapore
-    databaseName: kundali
-    user: kundali
