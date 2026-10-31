@@ -15,7 +15,6 @@ from app.config import get_settings
 from app.database import SessionLocal, engine
 from app.models import Base
 from app.page_images import sync_defaults
-from app.routers.admin import MEDIA_ROOT
 from app.routers.admin import router as admin_router
 from app.routers.almanac import router as almanac_router
 from app.routers.auth import router as auth_router
@@ -25,6 +24,7 @@ from app.routers.health import router as health_router
 from app.routers.match import router as match_router
 from app.routers.places import build_router as build_places_router
 from app.routers.reports import router as reports_router
+from app.services.media_store import MEDIA_ROOT
 from app.services.geolocation import GeolocationService
 
 
