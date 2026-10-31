@@ -62,13 +62,10 @@ uvicorn.out.log
 uvicorn.err.log
 
 # ---------------------------------------------------------------
-# Swiss Ephemeris data files.
-# These are large binaries you download from astro.com, not source.
-# The folder itself is kept via ephe/.gitkeep.
-# Delete the two lines below if you decide to commit them.
+# Swiss Ephemeris data files (ephe/*.se1) ARE committed: the deployed
+# server needs them for full precision, and without them Swiss
+# Ephemeris silently falls back to the less precise Moshier model.
 # ---------------------------------------------------------------
-ephe/*.se1
-ephe/*.se2
 
 # ---------------------------------------------------------------
 # OS / editor noise
